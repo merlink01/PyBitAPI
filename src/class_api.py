@@ -2,6 +2,11 @@ import os
 import sys
 import time
 
+#A hack to let pybitmessage source directory exist as Subdir for testing
+if os.path.exists(os.path.abspath('PyBitmessage')):
+    sys.path.append(os.path.abspath('PyBitmessage/src'))
+
+
 class APIError(Exception):
     def __init__(self, error_message):
         self.error_message = error_message
@@ -22,7 +27,7 @@ def getAPI(workingdir=None,silent=False):
     import bitmessagemain
     class MainAPI(bitmessagemain.Main):
         
-        def addContact(self, label, address):
+        def addToAddressBook(self, label, address):
 
             '''Add a Conact to the Addressbook
             Usage: api.addContact(label,bmaddress)'''
@@ -30,7 +35,7 @@ def getAPI(workingdir=None,silent=False):
             unicode(label, 'utf-8')
             queryreturn = bitmessagemain.shared.sqlQuery('''select * from addressbook where address=?''',address)
             if queryreturn != []:
-                raise APIError('AddressAlreadyInsideError')
+                raise APIError('Given Address is already inside: %s'%address)
             queryreturn = bitmessagemain.shared.sqlExecute('''INSERT INTO addressbook VALUES (?,?)''',label, address)
 
         def addSubscription(self, label, address):
@@ -136,7 +141,7 @@ def getAPI(workingdir=None,silent=False):
                 'createRandomAddress', addressVersionNumber, streamNumberForAddress, label, 1, "", eighteenByteRipe, nonceTrialsPerByte, payloadLengthExtraBytes))
             return bitmessagemain.shared.apiAddressGeneratorReturnQueue.get()
 
-        def deleteContact(self,address):
+        def deleteFromAddressBook(self,address):
 
             '''Delete a Contact from Address Book
             Usage: api.deleteContact(bmaddress)'''
@@ -376,7 +381,7 @@ def getAPI(workingdir=None,silent=False):
                 data.append({'label':label, 'address': address, 'enabled': bool(enabled)})
             return data
             
-        def listContacts(self):
+        def listAddressBook(self):
             
             '''List the Address Book
             Usage: print api.listContacts()'''
@@ -562,7 +567,7 @@ class TestFeed(unittest.TestCase):
         assert api.listAddresses()[1]['label'] == 'b',api.listAddresses()[1]
         api.joinChannel('general')
         assert api.listAddresses()[2]['label'] == '[chan] general',api.listAddresses()[2]
-        assert api.listContacts()[0]['label'] == '[chan] general',api.listContacts()[0]
+        assert api.listAddressBook()[0]['label'] == '[chan] general',api.listAddressBook()[0]
         api.addSubscription('d','BM-2D9vJkoGoTBhqMyZyjvELKgBWFMr6iGCQQ')
         assert api.listSubscriptions()[1]['label'] == 'd',api.listSubscriptions()[1]
         api.deleteSubscription(api.listSubscriptions()[1]['address'])
@@ -570,12 +575,12 @@ class TestFeed(unittest.TestCase):
         for sub in subs:
             assert sub['label'] != 'd'
 
-    def test_02_manage_contacts(self):
-        api.addContact('a','a')
-        assert api.listContacts()[1]['address'] == 'a',api.listContacts()[1]
-        count = len(api.listContacts())
-        api.deleteContact('a')
-        assert len(api.listContacts()) == count - 1
+    def test_02_manage_addressbook(self):
+        api.addToAddressBook('a','a')
+        assert api.listAddressBook()[1]['address'] == 'a',api.listContacts()[1]
+        count = len(api.listAddressBook())
+        api.deleteFromAddressBook('a')
+        assert len(api.listAddressBook()) == count - 1
 
     def test_03_manage_blackwhitelist(self):
         assert api.getBlackWhitelist() == 'black'
