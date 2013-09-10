@@ -102,30 +102,36 @@ def getAPI(workingdir=None,silent=False):
             info['networkStatus'] = networkStatus
             return info
 
-        def createDeterministicAddresses(self,passphrase,label='',numberOfAddresses=1,eighteenByteRipe=False,totalDifficulty=1,smallMessageDifficulty=1):
+        def createDeterministicAddresses(self,passphrase,label='',numberOfAddresses=1,eighteenByteRipe=False,totalDifficulty=1,smallMessageDifficulty=1,streamNumberForAddress=1,addressVersionNumber=3):
             
             '''Creates a Deterministic Bitmessage Address (an Address based on a password)
             Usage: api.createDeterministicAddresses(passphrase,label,numberOfAddresses,eighteenByteRipe,totalDifficulty,smallMessageDifficulty)'''
             
-            #hardcoded in correct version and stream number, because they shouldn't be changed until now
-            streamNumberForAddress = 1
-            addressVersionNumber = 3
-            
             if len(passphrase) == 0:
                 raise APIError('The specified passphrase is blank.')
             
-            if numberOfAddresses == 0:
-                raise APIError('Why do you want to create 0 Addresses.'
-                
             if not isinstance(eighteenByteRipe, bool):
-                raise APIError, 'eighteenByteRipe must be boolean'
-                
-                
+                raise APIError('Bool expected in eighteenByteRipe, got %s instead' % type(eighteenByteRipe))
             
+            if addressVersionNumber != 3:
+                raise APIError('The address version number currently must be 3. Got: %s' % addressVersionNumber)
+            
+            if streamNumberForAddress != 1:
+                raise APIError('Only Stream Number 1 is Supported jet. Got: %s' % streamNumberForAddress)
+            
+            if numberOfAddresses == 0:
+                raise APIError('Why do you want to create 0 Addresses.')
+            
+            if numberOfAddresses > 999:
+                raise APIError('You have (accidentally?) specified too many addresses to make. Maximum 999. \
+                This check only exists to prevent mischief; if you really want to create more addresses than this, \
+                contact the Bitmessage developers and we can modify the check or you can do it yourself by \
+                searching the source code for this message.')
+
             if not label:
                 label = passphrase
-                
-            unicode(label, 'utf-8')
+
+            label = unicode(label, 'utf-8')
             nonceTrialsPerByte = int(bitmessagemain.shared.networkDefaultProofOfWorkNonceTrialsPerByte * totalDifficulty)
             payloadLengthExtraBytes = int(bitmessagemain.shared.networkDefaultPayloadLengthExtraBytes * smallMessageDifficulty)
             bitmessagemain.shared.apiAddressGeneratorReturnQueue.queue.clear()
@@ -135,15 +141,20 @@ def getAPI(workingdir=None,silent=False):
             queueReturn = bitmessagemain.shared.apiAddressGeneratorReturnQueue.get()
             return queueReturn
 
-        def createRandomAddress(self,label,eighteenByteRipe=False,totalDifficulty=1,smallMessageDifficulty=1):
-            
+        def createRandomAddress(self,label,eighteenByteRipe=False,totalDifficulty=1,smallMessageDifficulty=1,streamNumberForAddress=1,addressVersionNumber=3):
+
             '''Create a reandom Bitmessage Address
             Usage: api.createRandomAddress(label,eighteenByteRipe,totalDifficulty,smallMessageDifficulty)'''
 
-            #hardcoded in correct version and stream number, because they shouldn't be changed until now
-            streamNumberForAddress = 1
-            addressVersionNumber = 3
-
+            if not isinstance(eighteenByteRipe, bool):
+                raise APIError('Bool expected in eighteenByteRipe, got %s instead' % type(eighteenByteRipe))
+            
+            if addressVersionNumber != 3:
+                raise APIError('The address version number currently must be 3. Got: %s' % addressVersionNumber )
+            
+            if streamNumberForAddress != 1:
+                raise APIError('Only Stream Number 1 is Supported jet. Got: %s' % streamNumberForAddress)
+                
             unicode(label, 'utf-8')
             nonceTrialsPerByte = int(bitmessagemain.shared.networkDefaultProofOfWorkNonceTrialsPerByte * totalDifficulty)
             payloadLengthExtraBytes = int(bitmessagemain.shared.networkDefaultPayloadLengthExtraBytes * smallMessageDifficulty)
@@ -343,34 +354,44 @@ def getAPI(workingdir=None,silent=False):
             return data
             
         def joinChannel(self, label, testaddress=None):
-            
+
             '''Join a Channel by a Given Name or Password
             api.joinChannel(label,testaddress[Only for Testing if the Name is correct])'''
-            
+
             str_chan = '[chan]'
+            
+            #Precheck Address Book
+            queryreturn = bitmessagemain.shared.sqlQuery('''select * from addressbook where label=?''',str_chan + ' ' + label)
+            if queryreturn != []:
+                raise APIError('Channel already in Addressbook: %s'%label)
+            
             #Add Channel to Own Addresses
             bitmessagemain.shared.apiAddressGeneratorReturnQueue.queue.clear()
             bitmessagemain.shared.addressGeneratorQueue.put(('createChan', 3, 1, str_chan + ' ' + label ,label))
             addressGeneratorReturnValue = bitmessagemain.shared.apiAddressGeneratorReturnQueue.get()
-            print 'addressGeneratorReturnValue', addressGeneratorReturnValue
+
             if len(addressGeneratorReturnValue) == 0:
-                raise APIError('AddressAlreadyInsideError')
+                raise APIError('The Channel is already in use: %s'%label)
+                
             address = addressGeneratorReturnValue[0]
             if testaddress:
                 if str(address) != str(testaddress):
-                    raise APIError('ChannelNameDoesntMatchAddressError')
-            #Add Address to Address Book
-            queryreturn = bitmessagemain.shared.sqlQuery('''select * from addressbook where address=?''',address)
+                    raise APIError('The entered address does not match the address generated by the label')
+                    
+            #Precheck Address Book
+            queryreturn = bitmessagemain.shared.sqlQuery('''select * from addressbook where label=?''',address)
             if queryreturn != []:
-                raise APIError('AddressAlreadyInsideError')
+                raise APIError('Channel already in Addressbook: %s'%label)
+                    
+            #Add Address to Address Book
             bitmessagemain.shared.sqlExecute('''INSERT INTO addressbook VALUES (?,?)''',str_chan + ' ' + label, address)
             return address
             
         def listAddresses(self):
-            
+
             '''List own Addresses
             Usage: print api.listAddresses()'''
-            
+
             addresses = []
             configSections = bitmessagemain.shared.config.sections()
             for addressInKeysFile in configSections:
