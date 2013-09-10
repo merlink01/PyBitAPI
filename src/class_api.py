@@ -111,6 +111,17 @@ def getAPI(workingdir=None,silent=False):
             streamNumberForAddress = 1
             addressVersionNumber = 3
             
+            if len(passphrase) == 0:
+                raise APIError('The specified passphrase is blank.')
+            
+            if numberOfAddresses == 0:
+                raise APIError('Why do you want to create 0 Addresses.'
+                
+            if not isinstance(eighteenByteRipe, bool):
+                raise APIError, 'eighteenByteRipe must be boolean'
+                
+                
+            
             if not label:
                 label = passphrase
                 
