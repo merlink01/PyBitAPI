@@ -2,6 +2,7 @@ import os
 import sys
 import time
 
+
 #A hack to let pybitmessage source directory exist as Subdir for testing
 if os.path.exists(os.path.abspath('PyBitmessage')):
     sys.path.append(os.path.abspath('PyBitmessage/src'))
@@ -26,7 +27,7 @@ def getAPI(workingdir=None,silent=False):
         
     import bitmessagemain
     class MainAPI(bitmessagemain.Main):
-        
+
         def addToAddressBook(self, label, address):
 
             '''Add a Conact to the Addressbook
@@ -162,6 +163,23 @@ def getAPI(workingdir=None,silent=False):
             bitmessagemain.shared.addressGeneratorQueue.put((
                 'createRandomAddress', addressVersionNumber, streamNumberForAddress, label, 1, "", eighteenByteRipe, nonceTrialsPerByte, payloadLengthExtraBytes))
             return bitmessagemain.shared.apiAddressGeneratorReturnQueue.get()
+
+        def deleteAddress(self,address):
+
+            status, addressVersionNumber, streamNumber, toRipe = self._verifyAddress(address)
+            address = bitmessagemain.addBMIfNotPresent(address)
+            if not bitmessagemain.shared.config.has_section(address):
+                raise APIError('Could not find this address in your keys.dat file.')
+
+            bitmessagemain.shared.config.remove_section(address)
+            with open(bitmessagemain.shared.appdata + 'keys.dat', 'wb') as configfile:
+                bitmessagemain.shared.config.write(configfile)
+            
+            bitmessagemain.shared.reloadMyAddressHashes()
+
+        def deleteChannel(self,address):
+            self.deleteAddress(address)
+            self.deleteFromAddressBook(address)
 
         def deleteFromAddressBook(self,address):
 
@@ -559,7 +577,25 @@ def getAPI(workingdir=None,silent=False):
 
             msgid = msgid.decode('hex')
             bitmessagemain.shared.sqlExecute('''UPDATE sent SET folder='trash' WHERE msgid=?''',msgid)
+            
+        def _verifyAddress(self, address):
+            status, addressVersionNumber, streamNumber, ripe = bitmessagemain.decodeAddress(address)
+            if status != 'success':
+                logger.warn('API Error 0007: Could not decode address %s. Status: %s.', address, status)
 
+                if status == 'checksumfailed':
+                    raise APIError('Checksum failed for address: ' + address)
+                if status == 'invalidcharacters':
+                    raise APIError('Invalid characters in address: ' + address)
+                if status == 'versiontoohigh':
+                    raise APIError('Address version number too high (or zero) in address: ' + address)
+                raise APIError('Could not decode address: ' + address + ' : ' + status)
+            if addressVersionNumber < 2 or addressVersionNumber > 4:
+                raise APIError('The address version number currently must be 2, 3 or 4. Others aren\'t supported. Check the address.')
+            if streamNumber != 1:
+                raise APIError('The stream number must be 1. Others aren\'t supported. Check the address.')
+
+            return (status, addressVersionNumber, streamNumber, ripe)
 
     api = MainAPI()
     api.start(daemon=True)
@@ -571,12 +607,13 @@ class TestFeed(unittest.TestCase):
     
     @classmethod
     def setUpClass(cls):
+        print 'Testing PyBitApi, Errors in class_singleWorker.py should be fixed: https://github.com/Bitmessage/PyBitmessage/issues/541'
         global path
         import tempfile
         path = tempfile.mkdtemp()
         
         global api
-        api = getAPI(workingdir=path,silent=True)
+        api = getAPI(workingdir=path)
         import time
         time.sleep(5)
         
@@ -585,36 +622,49 @@ class TestFeed(unittest.TestCase):
         import shutil
         import time
         api.stop()
-        time.sleep(20)
+        time.sleep(10)
         try:
             shutil.rmtree(path)
         except:
             pass
-
-    def test_01_addresses_subscriptions_channels(self):
-
+            
+    def test_00_delete_standard_subscription(self):
+        api.deleteSubscription(api.listSubscriptions()[0]['address'])
+        assert len(api.listSubscriptions())==0
+        
+            
+    def test_01_addresses(self):
         api.createRandomAddress('a')
         assert api.listAddresses()[0]['label'] == 'a',api.listAddresses()[0]
         api.createDeterministicAddresses('b')
         assert api.listAddresses()[1]['label'] == 'b',api.listAddresses()[1]
-        api.joinChannel('general')
-        assert api.listAddresses()[2]['label'] == '[chan] general',api.listAddresses()[2]
-        assert api.listAddressBook()[0]['label'] == '[chan] general',api.listAddressBook()[0]
-        api.addSubscription('d','BM-2D9vJkoGoTBhqMyZyjvELKgBWFMr6iGCQQ')
-        assert api.listSubscriptions()[1]['label'] == 'd',api.listSubscriptions()[1]
-        api.deleteSubscription(api.listSubscriptions()[1]['address'])
-        subs = api.listSubscriptions() 
-        for sub in subs:
-            assert sub['label'] != 'd'
+        
+        api.deleteAddress(api.listAddresses()[0]['address'])
+        api.deleteAddress(api.listAddresses()[0]['address'])
+        assert api.listAddresses() == [],api.listAddresses()
 
-    def test_02_manage_addressbook(self):
+    def test_02_subscriptions(self):
+        api.addSubscription('a','BM-2D9vJkoGoTBhqMyZyjvELKgBWFMr6iGCQQ')
+        assert api.listSubscriptions()[0]['label'] == 'a',api.listSubscriptions()[0]
+        api.deleteSubscription(api.listSubscriptions()[0]['address'])
+        assert len(api.listSubscriptions()) == 0,api.listSubscriptions()
+
+    def test_03_channels(self):
+        api.joinChannel('general')
+        assert api.listAddresses()[0]['label'] == '[chan] general',api.listAddresses()[0]
+        assert api.listAddressBook()[0]['label'] == '[chan] general',api.listAddressBook()[0]
+        api.deleteChannel(api.listAddresses()[0]['address'])
+        assert len(api.listAddresses()) == 0 
+        assert len(api.listAddressBook()) == 0 
+        
+    def test_04_manage_addressbook(self):
         api.addToAddressBook('a','a')
-        assert api.listAddressBook()[1]['address'] == 'a',api.listContacts()[1]
+        assert api.listAddressBook()[0]['address'] == 'a',api.listContacts()[0]
         count = len(api.listAddressBook())
         api.deleteFromAddressBook('a')
-        assert len(api.listAddressBook()) == count - 1
+        assert len(api.listAddressBook()) == 0
 
-    def test_03_manage_blackwhitelist(self):
+    def test_05_manage_blackwhitelist(self):
         assert api.getBlackWhitelist() == 'black'
         api.setBlackWhitelist('white')
         assert api.getBlackWhitelist() == 'white'
@@ -630,10 +680,11 @@ class TestFeed(unittest.TestCase):
         assert api.listWhitelist()[0]['label'] == 'a'
         api.deleteFromWhitelist('a')
         assert api.listWhitelist() == []
-        
-    def test_04_send_messages(self):
+
+    def test_06_send_messages(self):
         addr = api.createRandomAddress('sendtest')
-        ackdata1 = api.sendMessage(addr,'BM-2D9vJkoGoTBhqMyZyjvELKgBWFMr6iGCQQ','apitest','apitest')
+        api.addSubscription('a','BM-2D9vJkoGoTBhqMyZyjvELKgBWFMr6iGCQQ')
+        ackdata1 = api.sendMessage(addr,'BM-2D9vJkoGoTBhqMyZyjvELKgBWFMr6iGCQQ','apitest','apitest\nhttps://github.com/merlink01/PyBitAPI')
         ackdata2 = api.sendBroadcast(addr,'apitest','apitest')
         while api.getSentMessageByAckData(ackdata1) == 'notfound':
             pass
@@ -647,9 +698,8 @@ class TestFeed(unittest.TestCase):
         'broadcastsent', 'doingpubkeypow', 'awaitingpubkey', 'doingmsgpow', 'forcepow', 'msgsent', \
         'msgsentnoackexpected', 'ackreceived'],api.getSentMessageByAckData(ackdata2)
 
-    def test_05_manage_sent_messages(self):
-        
-        addr = api.createRandomAddress('senttest')
+    def test_07_manage_sent_messages(self):
+        addr = api.createRandomAddress('sendtest')
         ackdata = api.sendMessage(addr,addr,'last','last')
         idnum = api.getSentMessageByAckData(ackdata)[0]['msgid']
         
@@ -665,14 +715,14 @@ class TestFeed(unittest.TestCase):
         for message in messages:
             assert message['msgid'] != idnum
     
-    def test_06_manage_inbox_messages(self):
-
+    def test_08_manage_inbox_messages(self):
         assert api.clientStatus > 0, 'Not connected'
-        addr = api.createRandomAddress('senttest')
+        addr = api.createRandomAddress('sendtest')
         counter = 0
+        ackdata = api.sendMessage(addr,addr,'test','test')
         while api.getAllInboxMessages() == []:
             if counter > 20:
-                ackdata = api.sendMessage(addr,addr,'test','test')
+                ackdata = api.sendMessage(addr,addr,'apitest','apitest\nhttps://github.com/merlink01/PyBitAPI')
             time.sleep(10)
             assert api.clientStatus > 0, 'Not connected'
             
@@ -698,4 +748,13 @@ class TestFeed(unittest.TestCase):
         api.getAllInboxMessages()
         
 if __name__ == "__main__":
-        unittest.main()
+    import logging,os,sys
+    logger = logging.getLogger()
+    fmt_string = "[%(levelname)-7s]%(asctime)s.%(msecs)-3d\
+    %(module)s[%(lineno)-3d]/%(funcName)-10s  %(message)-8s "
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter(fmt_string, "%H:%M:%S"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.WARNING)
+    
+    unittest.main()
