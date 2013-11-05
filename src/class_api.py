@@ -2,6 +2,7 @@ import os
 import sys
 import time
 
+ADDRESSVERSION = 4
 
 #A hack to let pybitmessage source directory exist as Subdir for testing
 if os.path.exists(os.path.abspath('PyBitmessage')):
@@ -103,7 +104,7 @@ def getAPI(workingdir=None,silent=False):
             info['networkStatus'] = networkStatus
             return info
 
-        def createDeterministicAddresses(self,passphrase,label='',numberOfAddresses=1,eighteenByteRipe=False,totalDifficulty=1,smallMessageDifficulty=1,streamNumberForAddress=1,addressVersionNumber=3):
+        def createDeterministicAddresses(self,passphrase,label='',numberOfAddresses=1,eighteenByteRipe=False,totalDifficulty=1,smallMessageDifficulty=1,streamNumberForAddress=1):
             
             '''Creates a Deterministic Bitmessage Address (an Address based on a password)
             Usage: api.createDeterministicAddresses(passphrase,label,numberOfAddresses,eighteenByteRipe,totalDifficulty,smallMessageDifficulty)'''
@@ -113,9 +114,6 @@ def getAPI(workingdir=None,silent=False):
             
             if not isinstance(eighteenByteRipe, bool):
                 raise APIError('Bool expected in eighteenByteRipe, got %s instead' % type(eighteenByteRipe))
-            
-            if addressVersionNumber != 3:
-                raise APIError('The address version number currently must be 3. Got: %s' % addressVersionNumber)
             
             if streamNumberForAddress != 1:
                 raise APIError('Only Stream Number 1 is Supported jet. Got: %s' % streamNumberForAddress)
@@ -137,21 +135,18 @@ def getAPI(workingdir=None,silent=False):
             payloadLengthExtraBytes = int(bitmessagemain.shared.networkDefaultPayloadLengthExtraBytes * smallMessageDifficulty)
             bitmessagemain.shared.apiAddressGeneratorReturnQueue.queue.clear()
             bitmessagemain.shared.addressGeneratorQueue.put(
-                ('createDeterministicAddresses', addressVersionNumber, streamNumberForAddress,
+                ('createDeterministicAddresses', ADDRESSVERSION, streamNumberForAddress,
                  label, numberOfAddresses, passphrase, eighteenByteRipe, nonceTrialsPerByte, payloadLengthExtraBytes))
             queueReturn = bitmessagemain.shared.apiAddressGeneratorReturnQueue.get()
             return queueReturn
 
-        def createRandomAddress(self,label,eighteenByteRipe=False,totalDifficulty=1,smallMessageDifficulty=1,streamNumberForAddress=1,addressVersionNumber=3):
+        def createRandomAddress(self,label,eighteenByteRipe=False,totalDifficulty=1,smallMessageDifficulty=1,streamNumberForAddress=1):
 
             '''Create a reandom Bitmessage Address
             Usage: api.createRandomAddress(label,eighteenByteRipe,totalDifficulty,smallMessageDifficulty)'''
 
             if not isinstance(eighteenByteRipe, bool):
                 raise APIError('Bool expected in eighteenByteRipe, got %s instead' % type(eighteenByteRipe))
-            
-            if addressVersionNumber != 3:
-                raise APIError('The address version number currently must be 3. Got: %s' % addressVersionNumber )
             
             if streamNumberForAddress != 1:
                 raise APIError('Only Stream Number 1 is Supported jet. Got: %s' % streamNumberForAddress)
@@ -161,7 +156,7 @@ def getAPI(workingdir=None,silent=False):
             payloadLengthExtraBytes = int(bitmessagemain.shared.networkDefaultPayloadLengthExtraBytes * smallMessageDifficulty)
             bitmessagemain.shared.apiAddressGeneratorReturnQueue.queue.clear()
             bitmessagemain.shared.addressGeneratorQueue.put((
-                'createRandomAddress', addressVersionNumber, streamNumberForAddress, label, 1, "", eighteenByteRipe, nonceTrialsPerByte, payloadLengthExtraBytes))
+                'createRandomAddress', ADDRESSVERSION, streamNumberForAddress, label, 1, "", eighteenByteRipe, nonceTrialsPerByte, payloadLengthExtraBytes))
             return bitmessagemain.shared.apiAddressGeneratorReturnQueue.get()
 
         def deleteAddress(self,address):
@@ -276,12 +271,11 @@ def getAPI(workingdir=None,silent=False):
             
             #hardcoded in correct version and stream number, because they shouldn't be changed until now
             streamNumberForAddress = 1
-            addressVersionNumber = 3
             
             numberOfAddresses = 1
             eighteenByteRipe = False
             bitmessagemain.shared.addressGeneratorQueue.put(
-                ('getDeterministicAddress', addressVersionNumber,
+                ('getDeterministicAddress', ADDRESSVERSION,
                  streamNumber, 'unused API address', numberOfAddresses, passphrase, eighteenByteRipe))
             return bitmessagemain.shared.apiAddressGeneratorReturnQueue.get()
             
@@ -385,7 +379,7 @@ def getAPI(workingdir=None,silent=False):
             
             #Add Channel to Own Addresses
             bitmessagemain.shared.apiAddressGeneratorReturnQueue.queue.clear()
-            bitmessagemain.shared.addressGeneratorQueue.put(('createChan', 3, 1, str_chan + ' ' + label ,label))
+            bitmessagemain.shared.addressGeneratorQueue.put(('createChan', 4, 1, str_chan + ' ' + label ,label))
             addressGeneratorReturnValue = bitmessagemain.shared.apiAddressGeneratorReturnQueue.get()
 
             if len(addressGeneratorReturnValue) == 0:
