@@ -63,7 +63,7 @@ sometimes it happens, that long taking operations are still running
 in backround, so this stop method doesn't care about real closing.
 
 
-A Usble Example could be found under:
+A Usable Example could be found under:
 ------------------------
 https://github.com/merlink01/BitShell
 ------------------------
